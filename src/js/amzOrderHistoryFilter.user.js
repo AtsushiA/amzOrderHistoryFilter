@@ -1639,14 +1639,20 @@ var TemplateOrderHistoryFilter = {
             
             last_page_url = last_page_url_obj.href;
             
-            if ( last_page_url_obj.searchParams.has('startIndex') ) {
-                max_page_index = parseInt( last_page_url_obj.searchParams.get('startIndex'), 10 );
+            // [2026/10] ページ指定用パラメータが"startIndex"(注文の開始位置: 0,10,20,…)から"page"(0始まりのページ番号: 0,1,2,…)に変更された
+            // → "startIndex"のみに対応したままだと最終ページしか取得されず、全注文が最終ページの月(最も古い月)に分類されてしまう
+            const
+                page_param_name = [ 'page', 'startIndex' ].find( ( name ) => last_page_url_obj.searchParams.has( name ) ),
+                page_index_step = ( page_param_name == 'startIndex' ) ? 10 : 1;
+            
+            if ( page_param_name ) {
+                max_page_index = parseInt( last_page_url_obj.searchParams.get( page_param_name ), 10 );
                 let work_url_obj = new URL(last_page_url);
                 
                 // [メモ] 注文が多いと(自分の環境だと5000件より多いと(startIndex>500))最後のページがわからない（※1ページあたりの注文件数は10件固定）
-                // →大きいページ番号(startIndex)を指定して取得したページのナビゲーションから、最終ページを取得
+                // →大きいページ番号を指定して取得したページのナビゲーションから、最終ページを取得
                 try {
-                    work_url_obj.searchParams.set('startIndex', '100000'); // TODO:とりあえず100000ページ(~100万件)あれば十分と考えたが、妥当かは不明
+                    work_url_obj.searchParams.set( page_param_name, '100000' ); // TODO:とりあえず100000あれば十分と考えたが、妥当かは不明
                     const
                         test_url = work_url_obj.href,
                         response = await fetch( test_url );
@@ -1657,15 +1663,15 @@ var TemplateOrderHistoryFilter = {
                         
                         last_page_url = jq_html_fragment.find(is_legacy_page ? 'div.pagination-full ul.a-pagination li.a-normal:last a' : 'div.a-row ul.a-pagination li.a-normal:last a' ).attr( 'href' );
                         last_page_url_obj = new URL(last_page_url, location.href);
-                        max_page_index = parseInt( last_page_url_obj.searchParams.get('startIndex'), 10 );
+                        max_page_index = parseInt( last_page_url_obj.searchParams.get( page_param_name ), 10 );
                     }
                 }
                 catch ( error ) {
                     log_error( error );
                 }
                 work_url_obj = new URL(last_page_url, location.href);
-                for ( page_index = 0; page_index <= max_page_index; page_index += 10 ) {
-                    work_url_obj.searchParams.set('startIndex', page_index);
+                for ( page_index = 0; page_index <= max_page_index; page_index += page_index_step ) {
+                    work_url_obj.searchParams.set( page_param_name, page_index );
                     order_info_page_url_list.push( work_url_obj.href );
                 }
             }
